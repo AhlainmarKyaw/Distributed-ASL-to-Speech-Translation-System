@@ -1,0 +1,8 @@
+Distributed ASL-to-Speech Translation System
+client/       desktop webcam UI + MediaPipe + speech
+coordinator/  FastAPI API/coordinator
+workers/      Celery alphabet and phrase AI workers
+training/     dataset preprocessing and TensorFlow training
+datasets/     user/public dataset location (dataset files not bundled)
+models/       trained .keras models
+docker-compose.yml  Redis broker
