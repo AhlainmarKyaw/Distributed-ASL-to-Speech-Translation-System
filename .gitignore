@@ -13,6 +13,7 @@ venv/
 env/
 .env
 .env.*
+!.env.example
 
 .pytest_cache/
 .mypy_cache/
@@ -25,6 +26,7 @@ htmlcov/
 .vscode/
 
 logs/*.log
+dump.rdb
 pretrained/alphabet/*
 pretrained/phrases/*
 !pretrained/alphabet/.gitkeep

@@ -1,3 +1,4 @@
 @echo off
 call .venv\Scripts\activate
-celery -A workers.celery_app.celery_app worker -Q phrase_queue -P solo -n phrase@%%h --loglevel=info
+if not defined PHRASE_QUEUE set PHRASE_QUEUE=phrase_queue
+celery -A workers.celery_app.celery_app worker -Q %PHRASE_QUEUE% -P solo -n phrase@%%h --loglevel=info

@@ -1,202 +1,127 @@
-"""Phase 5 tests that never open a webcam or use fake production output."""
+"""Isolated tests for the static alphabet TensorFlow boundary."""
 
 from __future__ import annotations
-
-import inspect
 
 import numpy as np
 import pytest
 
-from scripts import test_alphabet_model as live_script
-from workers.alphabet_predictor import (
-    FEATURE_DIMENSION,
-    LABELS,
-    AlphabetPredictor,
-    PredictionStabilizer,
-)
+from workers.alphabet_predictor import FEATURE_DIMENSION, LABELS, AlphabetPredictor
 
 
-class InferenceBoundary:
-    """Controlled unit-test boundary; production uses the real Keras model."""
-
-    input_shape = (None, 30, 63)
-    output_shape = (None, 26)
-
-    def __init__(self, index: int = 0, confidence: float = 0.9) -> None:
+class FakeModel:
+    def __init__(self, index: int = 0, confidence: float = 0.9, output_size: int = 26):
         self.index = index
         self.confidence = confidence
-        self.calls: list[tuple[np.ndarray, bool]] = []
+        self.output_size = output_size
+        self.calls = []
 
-    def __call__(self, batch, *, training):
-        self.calls.append((np.asarray(batch), training))
-        output = np.zeros((1, 26), dtype=np.float32)
-        output[0, self.index] = self.confidence
+    def predict(self, batch, *, verbose):
+        self.calls.append((np.asarray(batch), verbose))
+        output = np.zeros((1, self.output_size), dtype=np.float32)
+        output[0, min(self.index, self.output_size - 1)] = self.confidence
         return output
 
 
 @pytest.fixture
-def model_path(tmp_path):
-    path = tmp_path / "model.h5"
-    path.touch()
-    return path
+def missing_model_path(tmp_path):
+    return tmp_path / "missing.keras"
 
 
-def build_predictor(model_path, model=None, **kwargs):
-    return AlphabetPredictor(model=model or InferenceBoundary(), model_path=model_path, **kwargs)
-
-
-def test_labels_are_ordered_a_to_z() -> None:
-    assert LABELS == tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-    assert "J" in LABELS and "Z" in LABELS
-
-
-def test_buffers_until_30_frames(model_path) -> None:
-    model = InferenceBoundary()
-    predictor = build_predictor(model_path, model)
-    for expected in range(1, 30):
-        result = predictor.add_frame(np.zeros(63))
-        assert result.status == "buffering"
-        assert result.buffer_size == expected
-    assert model.calls == []
-
-
-def test_inference_receives_valid_30_by_63_sequence(model_path) -> None:
-    model = InferenceBoundary(index=25)
-    predictor = build_predictor(model_path, model)
-    for value in range(30):
-        result = predictor.add_frame(np.full(63, value))
-    batch, training = model.calls[0]
-    assert batch.shape == (1, 30, 63)
-    assert training is False
-    assert result.letter == "Z"
-
-
-def test_rolling_buffer_discards_oldest_frame(model_path) -> None:
-    predictor = build_predictor(model_path)
-    for value in range(31):
-        predictor.add_frame(np.full(63, value))
-    assert predictor.sequence_array.shape == (30, 63)
-    assert np.all(predictor.sequence_array[0] == 1)
-    assert np.all(predictor.sequence_array[-1] == 30)
-
-
-@pytest.mark.parametrize("bad", [[1, 2], np.zeros((1, 63)), ["x"] * 63])
-def test_rejects_malformed_features(model_path, bad) -> None:
-    with pytest.raises(ValueError):
-        build_predictor(model_path).add_frame(bad)
-
-
-@pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
-def test_rejects_non_finite_features(model_path, bad_value) -> None:
-    vector = np.zeros(FEATURE_DIMENSION)
-    vector[0] = bad_value
-    with pytest.raises(ValueError):
-        build_predictor(model_path).add_frame(vector)
-
-
-def test_none_uses_missing_hand_zero_vector(model_path) -> None:
-    predictor = build_predictor(model_path)
-    predictor.add_frame(None)
-    assert np.array_equal(predictor.sequence_array[0], np.zeros(63, dtype=np.float32))
-
-
-def test_confidence_threshold_returns_uncertain(model_path) -> None:
-    predictor = build_predictor(
-        model_path, InferenceBoundary(index=1, confidence=0.49), confidence_threshold=0.5
+def predictor(missing_model_path, model=None, **kwargs):
+    return AlphabetPredictor(
+        model=model,
+        model_path=missing_model_path,
+        label_path=missing_model_path.with_suffix(".json"),
+        **kwargs,
     )
-    for _ in range(30):
-        result = predictor.add_frame(None)
-    assert result.status == "uncertain"
-    assert result.letter is None
-    assert result.confidence == pytest.approx(0.49)
+
+
+def test_labels_and_feature_contract_are_a_to_z_and_63() -> None:
+    assert FEATURE_DIMENSION == 63
+    assert LABELS == tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+
+def test_inference_receives_one_by_63_batch(missing_model_path) -> None:
+    model = FakeModel(index=25)
+    result = predictor(missing_model_path, model).predict([0.0] * 63)
+
+    batch, verbose = model.calls[0]
+    assert batch.shape == (1, 63)
+    assert batch.dtype == np.float32
+    assert verbose == 0
+    assert result["status"] == "predicted"
+    assert result["letter"] == "Z"
+    assert result["confidence"] == pytest.approx(0.9)
+    assert result["inference_ms"] >= 0
+
+
+def test_confidence_below_threshold_is_uncertain(missing_model_path) -> None:
+    result = predictor(
+        missing_model_path, FakeModel(index=1, confidence=0.49),
+        confidence_threshold=0.5,
+    ).predict([0.0] * 63)
+
+    assert result["status"] == "uncertain"
+    assert result["letter"] is None
+    assert result["confidence"] == pytest.approx(0.49)
 
 
 @pytest.mark.parametrize(
-    "input_shape,output_shape",
-    [((None, 29, 63), (None, 26)), ((None, 30, 63), (None, 25))],
+    "features",
+    [[0.0] * 62, [0.0] * 64, ["x"] * 63,
+     [float("nan")] + [0.0] * 62, [float("inf")] + [0.0] * 62],
 )
-def test_rejects_invalid_model_contract(model_path, input_shape, output_shape) -> None:
-    model = InferenceBoundary()
-    model.input_shape = input_shape
-    model.output_shape = output_shape
-    with pytest.raises(ValueError):
-        build_predictor(model_path, model)
+def test_predictor_rejects_invalid_features(missing_model_path, features) -> None:
+    with pytest.raises(ValueError, match="63 finite"):
+        predictor(missing_model_path, FakeModel()).predict(features)
 
 
-def test_stability_requires_consecutive_agreement() -> None:
-    stable = PredictionStabilizer(3)
-    assert stable.update("A") == (None, None)
-    assert stable.update("B") == (None, None)
-    assert stable.update("B") == (None, None)
-    assert stable.update("B") == ("B", "B")
+def test_missing_model_is_reported_without_importing_tensorflow(missing_model_path) -> None:
+    loader_calls = []
+    instance = AlphabetPredictor(
+        model_path=missing_model_path,
+        label_path=missing_model_path.with_suffix(".json"),
+        model_loader=lambda path: loader_calls.append(path),
+    )
+
+    result = instance.predict([0.0] * 63)
+
+    assert instance.ready is False
+    assert loader_calls == []
+    assert result["status"] == "model_missing"
+    assert result["letter"] is None
+    assert result["confidence"] is None
 
 
-def test_held_letter_is_not_emitted_twice() -> None:
-    stable = PredictionStabilizer(2)
-    assert stable.update("C") == (None, None)
-    assert stable.update("C") == ("C", "C")
-    assert stable.update("C") == ("C", None)
-    stable.update(None)
-    stable.update("C")
-    assert stable.update("C") == ("C", "C")
-
-
-def test_reset_clears_buffer(model_path) -> None:
-    predictor = build_predictor(model_path)
-    predictor.add_frame(None)
-    predictor.reset()
-    assert predictor.buffer_size == 0
-
-
-def test_model_loader_is_called_once(model_path) -> None:
+def test_existing_model_is_loaded_once(missing_model_path) -> None:
+    model_path = missing_model_path
+    model_path.touch()
+    model = FakeModel()
     calls = []
 
     def loader(path):
         calls.append(path)
-        return InferenceBoundary()
+        return model
 
-    predictor = AlphabetPredictor(model_loader=loader, model_path=model_path)
-    for _ in range(35):
-        predictor.add_frame(None)
+    instance = AlphabetPredictor(
+        model_path=model_path,
+        label_path=model_path.with_suffix(".json"),
+        model_loader=loader,
+    )
+    instance.predict([0.0] * 63)
+    instance.predict([0.0] * 63)
+
     assert calls == [model_path.resolve()]
+    assert len(model.calls) == 2
 
 
-def test_phase5_code_never_trains_model() -> None:
-    source = inspect.getsource(__import__("workers.alphabet_predictor", fromlist=["*"]))
-    assert ".fit(" not in source
-    assert ".train_on_batch(" not in source
-    assert "training=False" in source
+def test_model_output_must_match_labels(missing_model_path) -> None:
+    with pytest.raises(ValueError, match="output"):
+        predictor(missing_model_path, FakeModel(output_size=25)).predict([0.0] * 63)
 
 
-def test_importing_and_unit_testing_do_not_open_webcam(monkeypatch) -> None:
-    import cv2
+@pytest.mark.parametrize("threshold", [-0.1, 1.1])
+def test_invalid_confidence_threshold_is_rejected(missing_model_path, threshold) -> None:
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        predictor(missing_model_path, FakeModel(), confidence_threshold=threshold)
 
-    monkeypatch.setattr(cv2, "VideoCapture", lambda *_: pytest.fail("webcam opened"))
-    assert live_script.main([]) == 0
-
-
-def test_live_extraction_uses_anatomical_right_and_mirrors_x() -> None:
-    class Point:
-        def __init__(self, x, y, z):
-            self.x, self.y, self.z = x, y, z
-
-    class Hand:
-        landmark = [Point(0.25, 0.5, -0.1) for _ in range(21)]
-
-    class Results:
-        right_hand_landmarks = Hand()
-        left_hand_landmarks = None
-
-    features = live_script.extract_right_hand(Results())
-    assert features.shape == (63,)
-    assert features[0] == pytest.approx(0.75)
-    assert features[1] == pytest.approx(0.5)
-    assert features[2] == pytest.approx(-0.1)
-
-
-def test_left_hand_is_never_used_as_alphabet_features() -> None:
-    class Results:
-        right_hand_landmarks = None
-        left_hand_landmarks = object()
-
-    assert live_script.extract_right_hand(Results()) is None
