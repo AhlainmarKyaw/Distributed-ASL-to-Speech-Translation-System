@@ -1,18 +1,82 @@
+x-app-environment: &app-environment
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+  ALPHABET_QUEUE: ${ALPHABET_QUEUE:-alphabet_queue}
+  PHRASE_QUEUE: ${PHRASE_QUEUE:-phrase_queue}
+  TASK_TIMEOUT_SECONDS: ${TASK_TIMEOUT_SECONDS:-10}
+  TASK_STATUS_EXPIRATION_SECONDS: ${TASK_STATUS_EXPIRATION_SECONDS:-3600}
+  API_MAX_REQUEST_BYTES: ${API_MAX_REQUEST_BYTES:-262144}
+  WORKER_HEARTBEAT_SECONDS: ${WORKER_HEARTBEAT_SECONDS:-5}
+  WORKER_OFFLINE_SECONDS: ${WORKER_OFFLINE_SECONDS:-15}
+  ALPHABET_MODEL: /app/models/alphabet_landmarks.keras
+  PHRASE_MODEL: /app/models/phrase_sequence.keras
+
+x-app-service: &app-service
+  image: distributed-asl-server:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  environment: *app-environment
+  depends_on:
+    redis:
+      condition: service_healthy
+
 services:
   redis:
     image: redis:7-alpine
-    container_name: distributed-asl-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
     volumes:
       - redis_data:/data
 
+  coordinator:
+    <<: *app-service
+    command: ["python", "-m", "uvicorn", "coordinator.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *app-environment
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+    ports:
+      - "${COORDINATOR_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "scripts/container_healthcheck.py", "coordinator"]
+      interval: 10s
+      timeout: 6s
+      retries: 10
+      start_period: 20s
+
+  alphabet-worker:
+    <<: *app-service
+    command:
+      - /bin/sh
+      - -c
+      - exec celery -A workers.celery_app.celery_app worker -Q "$${ALPHABET_QUEUE}" --pool=solo --concurrency=1 -n "alphabet@%h" --loglevel=info
+    healthcheck:
+      test: ["CMD", "python", "scripts/container_healthcheck.py", "worker", "alphabet"]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 20s
+
+  phrase-worker:
+    <<: *app-service
+    command:
+      - /bin/sh
+      - -c
+      - exec celery -A workers.celery_app.celery_app worker -Q "$${PHRASE_QUEUE}" --pool=solo --concurrency=1 -n "phrase@%h" --loglevel=info
+    healthcheck:
+      test: ["CMD", "python", "scripts/container_healthcheck.py", "worker", "phrase"]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 20s
+
 volumes:
   redis_data:
-

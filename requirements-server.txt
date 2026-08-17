@@ -1,0 +1,7 @@
+# Shared coordinator/worker container dependencies (no webcam, UI, or training stack).
+numpy==1.26.4
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+redis==5.2.1
+celery[redis]==5.5.3
+tensorflow==2.19.1

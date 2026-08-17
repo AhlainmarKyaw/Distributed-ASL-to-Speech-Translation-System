@@ -1,3 +1,4 @@
 @echo off
 call .venv\Scripts\activate
-celery -A workers.celery_app.celery_app worker -Q alphabet_queue -P solo -n alphabet@%%h --loglevel=info
+if not defined ALPHABET_QUEUE set ALPHABET_QUEUE=alphabet_queue
+celery -A workers.celery_app.celery_app worker -Q %ALPHABET_QUEUE% -P solo -n alphabet@%%h --loglevel=info
