@@ -1,0 +1,17 @@
+{
+  "sequence_length": 30,
+  "feature_count": 126,
+  "number_of_classes": 9,
+  "classes": [
+    "GOOD",
+    "HELP",
+    "HOW",
+    "MORNING",
+    "NO",
+    "PLEASE",
+    "SORRY",
+    "YES",
+    "YOU"
+  ],
+  "minimum_samples_per_class": 4
+}
