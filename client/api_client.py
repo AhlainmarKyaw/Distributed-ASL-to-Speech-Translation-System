@@ -18,6 +18,21 @@ def post_alphabet(features: list[float], client_request_id: str) -> dict[str, An
     response.raise_for_status()
     return response.json()
 
+def post_phrase_sequence(
+    sequence: list[list[float]],
+    client_request_id: str,
+) -> dict[str, Any]:
+    response = requests.post(
+        settings.api_url + "/predict/phrase",
+        json={
+            "sequence": sequence,
+            "client_request_id": client_request_id,
+        },
+        timeout=settings.phrase_prediction_timeout_seconds,
+    )
+
+    response.raise_for_status()
+    return response.json()
 
 def post_phrase_text(text: str, client_request_id: str) -> dict[str, Any]:
     response = requests.post(

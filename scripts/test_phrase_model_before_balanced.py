@@ -8,63 +8,48 @@ from tensorflow import keras
 
 
 # =========================================================
-# PATHS
+# CONFIGURATION
 # =========================================================
 
 DATASET_ROOT = Path("datasets/phrases")
 
 MODEL_PATH = Path("models/phrase_sequence.keras")
 LABEL_PATH = Path("models/phrase_labels.json")
-NORMALIZATION_PATH = Path("models/phrase_normalization.npz")
 CONFIG_PATH = Path("models/phrase_model_config.json")
-
-
-# =========================================================
-# CONFIGURATION
-# =========================================================
 
 SEQUENCE_LENGTH = 30
 FEATURE_COUNT = 126
-
-TEST_SIZE = 0.20
-RANDOM_STATE = 42
+MIN_SAMPLES_PER_CLASS = 4
 
 
 # =========================================================
-# BASIC CHECKS
+# CHECK REQUIRED FILES
 # =========================================================
 
 print()
-print("=" * 70)
-print("BALANCED PHRASE MODEL TEST")
-print("=" * 70)
+print("=" * 65)
+print("DISTRIBUTED ASL - PHRASE MODEL TEST")
+print("=" * 65)
 
 
-required_files = [
-    MODEL_PATH,
-    LABEL_PATH,
-    NORMALIZATION_PATH,
-]
+if not MODEL_PATH.exists():
+    raise SystemExit(
+        f"ERROR: Model not found: {MODEL_PATH}"
+    )
 
-
-for file_path in required_files:
-
-    if not file_path.exists():
-
-        raise SystemExit(
-            f"Missing required file: {file_path}"
-        )
-
+if not LABEL_PATH.exists():
+    raise SystemExit(
+        f"ERROR: Labels not found: {LABEL_PATH}"
+    )
 
 if not DATASET_ROOT.exists():
-
     raise SystemExit(
-        f"Missing phrase dataset: {DATASET_ROOT}"
+        f"ERROR: Dataset not found: {DATASET_ROOT}"
     )
 
 
 # =========================================================
-# LOAD SAVED LABELS
+# LOAD LABELS
 # =========================================================
 
 with open(
@@ -72,20 +57,14 @@ with open(
     "r",
     encoding="utf-8",
 ) as file:
-
     saved_labels = json.load(file)
 
 
 print()
-print("Classes:")
+print("Phrase classes:")
 
-for index, label in enumerate(
-    saved_labels
-):
-
-    print(
-        f"{index:2} -> {label}"
-    )
+for index, label in enumerate(saved_labels):
+    print(f"  {index}: {label}")
 
 
 # =========================================================
@@ -93,89 +72,49 @@ for index, label in enumerate(
 # =========================================================
 
 print()
-print("Loading model...")
+print("Loading phrase model...")
 
 model = keras.models.load_model(
     MODEL_PATH
 )
 
-print(
-    "Model loaded successfully."
-)
+print("Phrase model loaded successfully.")
 
-print(
-    "Input shape :",
-    model.input_shape,
-)
-
-print(
-    "Output shape:",
-    model.output_shape,
-)
+print()
+print("Model input shape :", model.input_shape)
+print("Model output shape:", model.output_shape)
 
 
 # =========================================================
 # VERIFY MODEL SHAPE
 # =========================================================
 
-expected_shape = (
+expected_input_shape = (
     None,
     SEQUENCE_LENGTH,
     FEATURE_COUNT,
 )
 
 
-if model.input_shape != expected_shape:
+if model.input_shape != expected_input_shape:
 
     raise SystemExit(
-        f"Unexpected model input shape.\n"
-        f"Expected: {expected_shape}\n"
-        f"Found   : {model.input_shape}"
+        "\nERROR: Unexpected phrase model input shape.\n"
+        f"Expected: {expected_input_shape}\n"
+        f"Received: {model.input_shape}"
     )
 
 
-if model.output_shape[-1] != len(
-    saved_labels
-):
+if model.output_shape[-1] != len(saved_labels):
 
     raise SystemExit(
-        "Model output size does not match labels."
+        "\nERROR: Model output count does not match "
+        "phrase_labels.json."
     )
 
 
 # =========================================================
-# LOAD NORMALIZATION
-# =========================================================
-
-print()
-print(
-    "Loading normalization values..."
-)
-
-
-normalization = np.load(
-    NORMALIZATION_PATH
-)
-
-
-mean = normalization["mean"]
-
-std = normalization["std"]
-
-
-print(
-    "Normalization mean shape:",
-    mean.shape,
-)
-
-print(
-    "Normalization std shape :",
-    std.shape,
-)
-
-
-# =========================================================
-# LOAD CONFIG
+# READ CONFIG
 # =========================================================
 
 if CONFIG_PATH.exists():
@@ -185,68 +124,68 @@ if CONFIG_PATH.exists():
         "r",
         encoding="utf-8",
     ) as file:
-
         config = json.load(file)
 
     print()
-    print("Saved configuration:")
-
+    print("Model configuration:")
     print(
-        "Dataset:",
-        config.get("dataset"),
+        "  Sequence length:",
+        config.get("sequence_length"),
     )
-
     print(
-        "Total samples:",
-        config.get("total_samples"),
+        "  Feature count  :",
+        config.get("feature_count"),
     )
-
     print(
-        "Saved test accuracy:",
-        (
-            f"{config.get('test_accuracy', 0) * 100:.2f}%"
-        ),
+        "  Number classes :",
+        config.get("number_of_classes"),
     )
 
 
 # =========================================================
-# LOAD DATASET
+# LOAD VALID DATASET
 # =========================================================
 
 print()
-print("=" * 70)
-print("LOADING DATASET")
-print("=" * 70)
+print("=" * 65)
+print("LOADING TEST DATA")
+print("=" * 65)
 
 
 X = []
 y = []
 
 
-for class_name in saved_labels:
+class_folders = sorted(
+    [
+        folder
+        for folder in DATASET_ROOT.iterdir()
+        if folder.is_dir()
+    ]
+)
 
-    folder = (
-        DATASET_ROOT
-        / class_name
-    )
 
-    if not folder.exists():
-
-        raise SystemExit(
-            f"Missing class folder: {folder}"
-        )
+for folder in class_folders:
 
     files = sorted(
         folder.glob("*.npy")
     )
 
-    valid = 0
-    invalid = 0
+    # Must match training behavior
+    if len(files) < MIN_SAMPLES_PER_CLASS:
+
+        print(
+            f"{folder.name:15} "
+            f"SKIPPED - {len(files)} sample(s)"
+        )
+
+        continue
+
+    loaded = 0
 
     for file_path in files:
 
         try:
-
             sequence = np.load(
                 file_path
             )
@@ -254,12 +193,10 @@ for class_name in saved_labels:
         except Exception as error:
 
             print(
-                f"Cannot load "
-                f"{file_path.name}: "
+                f"Could not load {file_path.name}: "
                 f"{error}"
             )
 
-            invalid += 1
             continue
 
         if sequence.shape != (
@@ -273,7 +210,6 @@ for class_name in saved_labels:
                 f"{sequence.shape}"
             )
 
-            invalid += 1
             continue
 
         X.append(
@@ -283,15 +219,24 @@ for class_name in saved_labels:
         )
 
         y.append(
-            class_name
+            folder.name.replace(
+                "_",
+                " ",
+            )
         )
 
-        valid += 1
+        loaded += 1
 
     print(
-        f"{class_name:12} "
-        f"valid={valid:3} "
-        f"invalid={invalid:3}"
+        f"{folder.name:15} "
+        f"{loaded} loaded"
+    )
+
+
+if not X:
+
+    raise SystemExit(
+        "ERROR: No valid phrase sequences found."
     )
 
 
@@ -312,41 +257,52 @@ y_encoded = encoder.fit_transform(
 )
 
 
-if encoder.classes_.tolist() != saved_labels:
-
-    raise SystemExit(
-        "Dataset labels do not match "
-        "the saved phrase labels."
-    )
+dataset_labels = encoder.classes_.tolist()
 
 
 print()
-print(
-    "Dataset shape:",
-    X.shape,
-)
+print("Dataset shape :", X.shape)
+print("Dataset labels:", dataset_labels)
 
-print(
-    "Total samples:",
-    len(X),
-)
+
+# =========================================================
+# VERIFY LABEL ORDER
+# =========================================================
+
+if dataset_labels != saved_labels:
+
+    print()
+    print("ERROR: Model labels and dataset labels differ.")
+
+    print(
+        "Model labels  :",
+        saved_labels,
+    )
+
+    print(
+        "Dataset labels:",
+        dataset_labels,
+    )
+
+    raise SystemExit(
+        "Cannot safely evaluate the model."
+    )
 
 
 # =========================================================
 # RECREATE SAME TEST SPLIT
 # =========================================================
 
-_, X_test, _, y_test = (
-    train_test_split(
-        X,
-        y_encoded,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_STATE,
-        stratify=y_encoded,
-    )
+_, X_test, _, y_test = train_test_split(
+    X,
+    y_encoded,
+    test_size=0.25,
+    random_state=42,
+    stratify=y_encoded,
 )
 
 
+print()
 print(
     "Held-out test samples:",
     len(X_test),
@@ -354,30 +310,19 @@ print(
 
 
 # =========================================================
-# APPLY SAME NORMALIZATION AS TRAINING
-# =========================================================
-
-X_test_normalized = (
-    X_test - mean
-) / std
-
-
-# =========================================================
-# EVALUATE
+# EVALUATE MODEL
 # =========================================================
 
 print()
-print("=" * 70)
+print("=" * 65)
 print("MODEL EVALUATION")
-print("=" * 70)
+print("=" * 65)
 
 
-test_loss, test_accuracy = (
-    model.evaluate(
-        X_test_normalized,
-        y_test,
-        verbose=0,
-    )
+test_loss, test_accuracy = model.evaluate(
+    X_test,
+    y_test,
+    verbose=0,
 )
 
 
@@ -393,33 +338,31 @@ print(
 
 
 # =========================================================
-# PREDICTIONS
+# PREDICT TEST SAMPLES
 # =========================================================
 
-probabilities = model.predict(
-    X_test_normalized,
+predictions = model.predict(
+    X_test,
     verbose=0,
 )
 
 
 predicted_indices = np.argmax(
-    probabilities,
+    predictions,
     axis=1,
 )
 
 
 print()
-print("=" * 70)
-print("INDIVIDUAL PREDICTIONS")
-print("=" * 70)
+print("=" * 65)
+print("INDIVIDUAL TEST PREDICTIONS")
+print("=" * 65)
 
 
 correct = 0
 
 
-for index in range(
-    len(X_test)
-):
+for index in range(len(X_test)):
 
     actual_index = int(
         y_test[index]
@@ -429,28 +372,21 @@ for index in range(
         predicted_indices[index]
     )
 
-    actual_label = (
-        saved_labels[
-            actual_index
-        ]
-    )
+    actual_label = saved_labels[
+        actual_index
+    ]
 
-    predicted_label = (
-        saved_labels[
-            predicted_index
-        ]
-    )
+    predicted_label = saved_labels[
+        predicted_index
+    ]
 
     confidence = float(
         np.max(
-            probabilities[index]
+            predictions[index]
         )
     )
 
-    if (
-        actual_index
-        == predicted_index
-    ):
+    if actual_index == predicted_index:
 
         status = "CORRECT"
         correct += 1
@@ -459,12 +395,12 @@ for index in range(
 
         status = "WRONG"
 
+
     print(
         f"{status:7} | "
         f"Actual: {actual_label:10} | "
         f"Predicted: {predicted_label:10} | "
-        f"Confidence: "
-        f"{confidence * 100:6.2f}%"
+        f"Confidence: {confidence * 100:6.2f}%"
     )
 
 
@@ -472,16 +408,15 @@ for index in range(
 # FINAL RESULT
 # =========================================================
 
-accuracy = (
-    correct
-    / len(X_test)
+calculated_accuracy = (
+    correct / len(X_test)
 ) * 100
 
 
 print()
-print("=" * 70)
+print("=" * 65)
 print("FINAL RESULT")
-print("=" * 70)
+print("=" * 65)
 
 print(
     f"Correct predictions : "
@@ -490,12 +425,9 @@ print(
 
 print(
     f"Accuracy            : "
-    f"{accuracy:.2f}%"
+    f"{calculated_accuracy:.2f}%"
 )
 
 print()
-print(
-    "Balanced phrase model test complete."
-)
-
+print("Phrase model test completed.")
 print()
