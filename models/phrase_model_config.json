@@ -1,0 +1,27 @@
+{
+  "sequence_length": 30,
+  "feature_count": 126,
+  "classes": [
+    "GOOD",
+    "GOODBYE",
+    "HELLO",
+    "HELP",
+    "HOW",
+    "LOVE",
+    "MORNING",
+    "NO",
+    "PLEASE",
+    "SORRY",
+    "YES",
+    "YOU"
+  ],
+  "number_of_classes": 12,
+  "total_samples": 300,
+  "training_samples": 192,
+  "validation_samples": 48,
+  "testing_samples": 60,
+  "test_accuracy": 0.7333333492279053,
+  "normalization_file": "models\\phrase_normalization.npz",
+  "dataset": "WLASL + webcam",
+  "model_type": "GRU"
+}
