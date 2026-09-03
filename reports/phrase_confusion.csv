@@ -1,0 +1,13 @@
+,pred_GOOD,pred_GOODBYE,pred_HELLO,pred_HELP,pred_HOW,pred_LOVE,pred_MORNING,pred_NO,pred_PLEASE,pred_SORRY,pred_YES,pred_YOU
+actual_GOOD,18,0,0,4,3,0,0,0,0,0,0,0
+actual_GOODBYE,1,23,0,0,0,0,0,0,0,0,0,1
+actual_HELLO,0,0,23,0,0,0,0,0,0,0,0,2
+actual_HELP,1,0,0,23,1,0,0,0,0,0,0,0
+actual_HOW,0,0,0,0,25,0,0,0,0,0,0,0
+actual_LOVE,0,0,0,0,1,22,2,0,0,0,0,0
+actual_MORNING,0,0,0,0,0,0,25,0,0,0,0,0
+actual_NO,4,0,0,0,0,0,0,18,0,0,0,3
+actual_PLEASE,5,0,0,0,0,0,0,0,15,2,0,3
+actual_SORRY,0,0,0,0,0,0,0,0,0,25,0,0
+actual_YES,2,0,0,0,0,0,0,0,0,0,18,5
+actual_YOU,3,0,0,0,0,0,0,0,0,0,0,22

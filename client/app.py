@@ -27,21 +27,6 @@ from observability import get_logger, log_event, new_request_id
 API = settings.api_url
 logger = get_logger("client")
 
-COMMON_PHRASES = [
-    "Hello",
-    "Thank you",
-    "Good morning",
-    "Please",
-    "Yes",
-    "No",
-    "Help me",
-    "Sorry",
-    "I love you",
-    "How are you?",
-    "Nice to meet you",
-    "Goodbye",
-]
-
 
 class FlatButton(tk.Label):
     """A consistently coloured button on macOS, Windows, and Linux."""
@@ -863,64 +848,6 @@ class ASLApp:
             ] = value
 
         service.grid_columnconfigure(
-            1,
-            weight=1,
-        )
-
-        # =====================================================
-        # COMMON PHRASE BUTTONS
-        # =====================================================
-
-        tk.Label(
-            right,
-            text="COMMON PHRASES",
-            bg="#0d1a2c",
-            fg="#7f93ad",
-            font=(
-                "Segoe UI",
-                10,
-                "bold",
-            ),
-        ).pack(
-            anchor="w",
-            pady=(10, 4),
-        )
-
-        chips = tk.Frame(
-            right,
-            bg="#0d1a2c",
-        )
-
-        chips.pack(
-            fill="x"
-        )
-
-        for index, phrase in enumerate(
-            COMMON_PHRASES
-        ):
-            button = FlatButton(
-                chips,
-                text=phrase,
-                command=lambda p=phrase:
-                self.use_phrase(p),
-                color="#1d3655",
-                compact=True,
-            )
-
-            button.grid(
-                row=index // 2,
-                column=index % 2,
-                sticky="ew",
-                padx=3,
-                pady=2,
-            )
-
-        chips.grid_columnconfigure(
-            0,
-            weight=1,
-        )
-
-        chips.grid_columnconfigure(
             1,
             weight=1,
         )
@@ -1983,21 +1910,6 @@ class ASLApp:
             self.buffer.text
         )
 
-    def use_phrase(
-        self,
-        phrase,
-    ):
-
-        self.buffer.set_text(
-            phrase
-        )
-
-        self._sync_text()
-
-        self.voice.speak(
-            phrase
-        )
-
     # =========================================================
     # SMART PHRASE TEXT NORMALIZATION
     # =========================================================
@@ -2390,8 +2302,7 @@ class ASLApp:
         if snapshot.last_task_status:
 
             self.last_task_status = (
-                snapshot
-                .last_task_status
+                snapshot.last_task_status
             )
 
         self._render_last_task_fields()
